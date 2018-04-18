@@ -35,5 +35,5 @@ For chase experiment
 
 ## Reference
 
-DQN+HER: Mostly based on implementation by [minsangkim142](https://github.com/minsangkim142/hindsight-experience-replay).
-DDPG+HER: Mostly based on implementation by [kwea123](https://github.com/kwea123/hindsight-experience-replay).
+* DQN+HER: Mostly based on implementation by [minsangkim142](https://github.com/minsangkim142/hindsight-experience-replay).
+* DDPG+HER: Mostly based on implementation by [kwea123](https://github.com/kwea123/hindsight-experience-replay).
