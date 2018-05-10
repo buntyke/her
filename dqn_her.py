@@ -9,6 +9,7 @@ import numpy as np
 from tqdm import tqdm
 import tensorflow as tf
 from matplotlib import pyplot as plt
+from replay_buffer import PrioritizedReplayBuffer
 
 # bit flipping environment
 class Env():
@@ -49,34 +50,25 @@ class Env():
         self.state = np.random.randint(2, size = size)
         self.target = np.random.randint(2, size = size)
 
-# Experience Replay Buffer
-class Buffer():
-    def __init__(self, buffer_size = 50000):
+# Experience Replay Buffer with priority
+class Buffer(object):
+
+    def __init__(self, buffer_size = 50000, alpha = 0.5):
         # initialize buffer
-        self.buffer = []
+        self.buffer = PrioritizedReplayBuffer(buffer_size, alpha)
         self.buffer_size = buffer_size
 
-    def add(self, experience):
+    def add(self, state, action, reward, next_state, goal):
         # add experience to buffer
-        self.buffer.append(experience)
+        self.buffer.add(obs_t = state,
+                        action = action,
+                        reward = reward,
+                        obs_tp1 = next_state,
+                        done = goal)
 
-        # trim buffer on overflowing
-        if len(self.buffer) > self.buffer_size:
-            self.buffer = self.buffer[int(0.0001 * self.buffer_size):]
-
-    def sample(self,size):
-        # check size of buffer
-        if len(self.buffer) >= size:
-            experience_buffer = self.buffer
-        else:
-            # expand buffer if insufficient size
-            experience_buffer = self.buffer * size
-
-        # return random sample from buffer
-        ##############
-        # what happens if we replace this with importance sampling?
-        ##############
-        return np.copy(np.reshape(np.array(random.sample(experience_buffer,size)),[size,4]))
+    def sample(self, size, beta=0.7):
+        # encode sample from PrioritizedReplayBuffer
+        return self.buffer.sample(size, beta)
 
 # utility function for fully connected layer
 def fully_connected_layer(inputs, dim, activation = None, scope = "fc", reuse = None, init = tf.contrib.layers.xavier_initializer(), bias = True):
@@ -282,9 +274,10 @@ def main():
                         for t in range(size):
                             # generate buffer for deuling q-network
                             s, a, r, s_n, g = episode_experience[t]
-                            inputs = np.concatenate([s,g],axis = -1)
-                            new_inputs = np.concatenate([s_n,g],axis = -1)
-                            buff.add(np.reshape(np.array([inputs,a,r,new_inputs]),[1,4]))
+                            buff.add(s, a, r, s_n, g)
+                            # inputs = np.concatenate([s,g],axis = -1)
+                            # new_inputs = np.concatenate([s_n,g],axis = -1)
+                            # buff.add(np.reshape(np.array([inputs,a,r,new_inputs]),[1,4]))
                             
                             # add additional information for HER
                             if HER:
@@ -309,7 +302,8 @@ def main():
                                         r_n = 0 if final else -1
 
                                     # add new experience to experience buffer
-                                    buff.add(np.reshape(np.array([inputs,a,r_n,new_inputs]),[1,4]))
+                                    buff.add(s, a, r_n, s_n, g_n)
+                                    # buff.add(np.reshape(np.array([inputs,a,r_n,new_inputs]),[1,4]))
 
                     # train the Q-network once every cycle
                     mean_loss = []
@@ -318,15 +312,10 @@ def main():
                     for k in range(optimisation_steps):
                         
                         # obtain a batch from experience buffer
-                        experience = buff.sample(batch_size)
-
-                        # split batch to states and rewards
-                        s, a, r, s_next = [np.squeeze(elem, axis = 1) for elem in np.split(experience, 4, 1)]
-                        
-                        # obtain states as numpy arrays
-                        s = np.array([ss for ss in s])
+                        s, a, r, s_next, g, _, _ = buff.sample(batch_size)
+                        s = np.dstack((s, g))
+                        s_next = np.dstack((s_next, g))
                         s = np.reshape(s, (batch_size, size * 2))
-                        s_next = np.array([ss for ss in s_next])
                         s_next = np.reshape(s_next, (batch_size, size * 2))
 
                         # generate predicted Q-values
